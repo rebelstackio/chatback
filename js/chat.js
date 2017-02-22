@@ -5,11 +5,13 @@
 var Chat = {	};
 
 
+Chat.FOCUS_ID = null;
+
 Chat.FOCUS_NAME = null;
 
 Chat.FOCUS_EMAIL = null;
 
-
+Chat.SEND_MESSAGE_KEY = 13;
 /**
  * _init - Init Chat component
  */
@@ -87,8 +89,24 @@ Chat.createUserComponent = function _createUserComponent (userObj,  userId) {
 Chat.userClickEvent = function _userClickEvent(event){
 	var domElement = event.target;
 	var id = domElement.getAttribute('data-id');
+	Chat.FOCUS_ID = id;
 	Chat.FOCUS_NAME = domElement.getAttribute('data-name');
 	Chat.FOCUS_EMAIL = domElement.getAttribute('data-email');
+	firebaseHelper.newClientMessage(id, function(data){
+		//NEW MEESAGE BELONGS TO THE CURRENT CHAT
+		if ( id == Chat.FOCUS_ID ) {
+			var message = data.val();
+			if ( message && message['source'] == 'CLIENT' ){
+				Chat.buildClientMessage(
+					message['message'],
+					message['createdAt'],
+					message['read'],
+					false,
+					data.key
+				);
+			}
+		}
+	});
 	firebaseHelper.getMessageByUserId(id).then(function(data){
 		if ( data.val()){
 			Chat.createMessageZoneByUserMessages();
@@ -157,11 +175,11 @@ Chat.buildMessageZone = function _buildMessageZone(){
 
 	message.addEventListener('keypress', function(event){
 		var key = event.keyCode;
-		if (key === ContactUsForm.SEND_MESSAGE_KEY){
+		if (key === Chat.SEND_MESSAGE_KEY){
 			event.preventDefault();
 			var message = event.target.value;
 			event.target.value = "";
-			ContactUsForm.sendClientMessage(message);
+			Chat.sendServerMessage(message);
 		}
 	});
 	return message;
@@ -206,18 +224,22 @@ Chat.buildPreviousConversation = function _buildPreviousConversation(messages){
 		var message = messages[keys[i]];
 		switch (message['source']) {
 			case 'CLIENT':
-				Chat.buildServerMessage(
+				Chat.buildClientMessage(
 					message['message'],
 					message['createdAt'],
-					message['read']
+					message['read'],
+					false,
+					keys[i]
 				);
 				break;
 
 			case 'SERVER':
-				Chat.buildClientMessage(
+				Chat.buildServerMessage(
 					message['message'],
 					message['createdAt'],
-					message['read']
+					message['read'],
+					false,
+					keys[i]
 				);
 				break;
 			default:
@@ -228,14 +250,45 @@ Chat.buildPreviousConversation = function _buildPreviousConversation(messages){
 }
 
 /**
-  * _buildClientMessage - Build DOM elements from client's message
+  * _sendClientMessage - Send the client message to firebase server
+  *
+  * @param  {type} message Message description
+  * @param  {type} user    User object (OPTIONAL)
+  * @return {type}         Firebase Promise
+  */
+Chat.sendServerMessage = function _sendServerMessage(message){
+	var lastMessage = Chat.buildServerMessage(message, null, null, true);
+	//TODO REMOVE SETTIMEOUT - JUST FOR TESTING
+	setTimeout(function(){
+		firebaseHelper.sendServerMessage(message, Chat.FOCUS_ID).then(function(){
+			console.log('Message  has been sent to the client ');
+			//CHANGE MESSAGE ICON TO SENT
+			var icon = lastMessage.getElementsByClassName('fa-paper-plane')[0];
+			icon.setAttribute('class', 'fa fa-circle me');
+			icon.setAttribute('title', 'Message sent');
+		}).catch(function(error){
+			console.log('There is an error sending the meesage', error);
+			//CHANGE MESSAGE ICON TO ERROR AND CHANGE CONTAINER'S  BG COLOR
+			var messageContainer = lastMessage.getElementsByClassName('me-message')[0];
+			messageContainer.setAttribute('class', 'message me-message-error');
+			var iconContainer = lastMessage.getElementsByClassName('message-data-name')[0];
+			var icon = iconContainer.getElementsByClassName('fa-paper-plane')[0];
+			icon.setAttribute('class', 'fa fa-times me-error');
+			icon.setAttribute('aria-hidden', 'true');
+			icon.setAttribute('title', 'The message hasn\'t been sent');
+		})
+	}, 2000);
+}
+
+/**
+  * _buildServerMessage - Build DOM elements from client's message
   *
   * @param  {string} 		message   Message descrition
   * @param  {timestamp} createdAt Message createdAt date
   * @param  {boolean} 	read      Meesage read by the rebel team
   * @param  {boolean} 	sending   Meesage is sending to the server
   */
-Chat.buildClientMessage = function _buildClientMessage(message, createdAt, read, sending){
+Chat.buildServerMessage = function _buildServerMessage(message, createdAt, read, sending, id){
 	// <li>
 	// 	<div class="message-data">
 	// 		<span class="message-data-name"><i class="fa fa-circle you"></i> You</span>
@@ -245,6 +298,9 @@ Chat.buildClientMessage = function _buildClientMessage(message, createdAt, read,
 	// 	</div>
 	// </li>
 	var messageContainer = document.createElement('li');
+	if ( id ){
+		messageContainer.setAttribute('id', 'message-container-' + id);
+	}
 	messageContainer.setAttribute('style', 'display:none;');
 	var messageDataContainer = document.createElement('div');
 	messageDataContainer.setAttribute('class', 'message-data');
@@ -310,8 +366,8 @@ Chat.buildClientMessage = function _buildClientMessage(message, createdAt, read,
  * @param  {timestamp} 	createdAt Message createdAt date
  * @param  {boolean} 		read      Meesage read by the rebel team
  */
-Chat.buildServerMessage = function _buildServerMessage(message, createdAt, read){
-	var message = 'default chat message';
+Chat.buildClientMessage = function _buildClientMessage(message, createdAt, read, sending, id){
+	// var message = 'default chat message';
 	// <li class="clearfix">
 	// 	<div class="message-data align-right">
 	// 		<span class="message-data-name">RebelStack </span> <i class="fa fa-circle me"></i>
@@ -319,53 +375,59 @@ Chat.buildServerMessage = function _buildServerMessage(message, createdAt, read)
 	// 	<div class="message me-message float-right"> We should take a look at your onboarding and service delivery workflows, for most businesess there are many ways to save time and not compromise quality.	</div>
 	// </li>
 
-	var messageContainer = document.createElement('li');
-	messageContainer.setAttribute('style', 'display:none;');
-	messageContainer.setAttribute('class', 'clearfix');
-	var messageDataContainer = document.createElement('div');
-	messageDataContainer.setAttribute('class', 'message-data align-right');
+	var messageExists = document.getElementById('message-container-' + id);
+	if ( !messageExists ) {
+		var messageContainer = document.createElement('li');
+		if ( id ){
+			messageContainer.setAttribute('id', 'message-container-' + id);
+		}
+		messageContainer.setAttribute('style', 'display:none;');
+		messageContainer.setAttribute('class', 'clearfix');
+		var messageDataContainer = document.createElement('div');
+		messageDataContainer.setAttribute('class', 'message-data align-right');
 
-	var messageDataTextContainer = document.createElement('span');
-	messageDataTextContainer.setAttribute('class', 'message-data-name');
+		var messageDataTextContainer = document.createElement('span');
+		messageDataTextContainer.setAttribute('class', 'message-data-name');
 
-	var icon = document.createElement('i');
-	icon.setAttribute('class', 'fa fa-envelope me faa-pulse animated');
+		var icon = document.createElement('i');
+		icon.setAttribute('class', 'fa fa-envelope you faa-pulse animated');
 
-	var strongText = document.createElement('strong');
+		var strongText = document.createElement('strong');
 
-	var messageDataText = document.createTextNode(' '+ Chat.FOCUS_NAME + ' - ');
-	strongText.appendChild(messageDataText);
+		var messageDataText = document.createTextNode(' '+ Chat.FOCUS_NAME + ' - ');
+		strongText.appendChild(messageDataText);
 
-	var time = Chat.buildDateMessageFormat();
+		var time = Chat.buildDateMessageFormat();
 
-	var messageTextContainer = document.createElement('div');
-	messageTextContainer.setAttribute('class', 'message me-message float-right');
+		var messageTextContainer = document.createElement('div');
+		messageTextContainer.setAttribute('class', 'message me-message float-right');
 
-	var _message = document.createTextNode(message);
+		var _message = document.createTextNode(message);
 
-	messageDataTextContainer.appendChild(icon);
-	messageDataTextContainer.appendChild(strongText);
-	messageDataTextContainer.appendChild(time);
+		messageDataTextContainer.appendChild(icon);
+		messageDataTextContainer.appendChild(strongText);
+		messageDataTextContainer.appendChild(time);
 
-	messageTextContainer.appendChild(_message);
+		messageTextContainer.appendChild(_message);
 
-	messageDataContainer.appendChild(messageDataTextContainer);
-	messageDataContainer.appendChild(messageTextContainer);
+		messageDataContainer.appendChild(messageDataTextContainer);
+		messageDataContainer.appendChild(messageTextContainer);
 
-	messageContainer.appendChild(messageDataContainer);
+		messageContainer.appendChild(messageDataContainer);
 
-	//ADD TO DOM
-	var chatList = document.getElementById('chat-list');
-	chatList.appendChild(messageContainer);
+		//ADD TO DOM
+		var chatList = document.getElementById('chat-list');
+		//CHECK IF THE CONTAINER IS READY  
+		if ( chatList ){
+			chatList.appendChild(messageContainer);
 
-	//UGG JQUERY
-	$(messageContainer).fadeIn( "slow" );
+			//UGG JQUERY
+			$(messageContainer).fadeIn( "slow" );
 
-	//FOCUS LAST MESSAGE
-	Chat.focusLastMessageChat();
-
-	//NOTIFICATION
-	//ContactUsForm.sendBrowserNotification(message);
+			//FOCUS LAST MESSAGE
+			Chat.focusLastMessageChat();
+		}
+	}
 }
 
 /**

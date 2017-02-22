@@ -645,7 +645,7 @@ h6 {
 .about {
   padding: 100px 0 0;
   color: var(--primary-text-color);
-  background-color: var(--gradient-bg-color1);
+  background-color: #687dc1;
 
 
 }
@@ -1835,9 +1835,22 @@ body.internal .blog {
 
 /** ERROR SENDING MESSAGE **/
 
-.chat .chat-history .you-message-error{
+.chat .chat-history .me-message-error{
   background: rgba(241, 92, 92, 0.98);
   color:#003366;
+}
+
+/** ERROR SENDING MESSAGE **/
+.chat .chat-history .me-message-error:after {
+    content: "";
+    position: absolute;
+    top: -15px;
+    left: 20px;
+    border-width: 0 15px 15px;
+    border-style: solid;
+    border-color: rgba(241, 92, 92, 0.98) transparent;
+    display: block;
+    width: 0;
 }
 
 .chat .chat-history .me-message {
@@ -1887,7 +1900,7 @@ body.internal .blog {
   color: #CCDBDC;
 }
 /** ERROR **/
-.you-error {
+.me-error {
   color: rgba(241, 92, 92, 0.98);
 }
 

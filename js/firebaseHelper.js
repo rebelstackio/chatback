@@ -10,6 +10,8 @@ var firebaseHelper = {};
 
 firebaseHelper.HISTORY_MESSAGE_QTY = 10;
 
+firebaseHelper.SERVER_SOURCE = "SERVER";
+
 /**
  * _init - Init firebase configuration and set up the client credentials locally
  *
@@ -37,7 +39,50 @@ firebaseHelper.newUserClick = function _newUserClick(next){
 	});
 }
 
+
+/**
+ * _getMessageByUserId - Get message by user ID
+ *
+ * @param  {string} id  User ID
+ * @return {Promise}    Firebase Promise
+ */
 firebaseHelper.getMessageByUserId = function _getMessageByUserId(id){
 	var path = '/messages/' + id  +'/';
 	return firebase.database().ref(path).orderByChild('createdAt').limitToLast(firebaseHelper.HISTORY_MESSAGE_QTY).once('value');
+}
+
+/**
+ * sendServerMessage - Send the message to the server
+ *
+ * @param  {string}  message Message descriptions
+ * @return {Promise}         FirebasePromise
+ */
+firebaseHelper.sendServerMessage = function _sendServerMessage(message, id){
+	var path = '/messages/' + id + '/';
+	var updates = {};
+
+	var newMessage = {
+		createdAt: firebase.database.ServerValue.TIMESTAMP,
+		message: message,
+		read: false,
+		source: firebaseHelper.SERVER_SOURCE
+	};
+
+	var newMessageKey = firebase.database().ref().child(path).push().key;
+	path += newMessageKey;
+	updates[path] = newMessage;
+	return firebase.database().ref().update(updates);
+}
+
+/**
+ * _newServeMessage - new message from server
+ *
+ * @param  {function} next Callback
+ */
+firebaseHelper.newClientMessage = function _newClientMessage(id, next){
+	var path = '/messages/' + id  +'/';
+	var messagesRef = firebase.database().ref(path).orderByChild('createdAt');
+	messagesRef.on('child_added', function(data) {
+		next(data);
+	});
 }
