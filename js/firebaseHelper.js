@@ -24,11 +24,11 @@ firebaseHelper.init = function _init(){
 
 
 /**
- * _newUserClick - Event when there is a new user added
+ * _updateUser - Event when there is a new user added
  *
  * @param  {function} next callback
  */
-firebaseHelper.newUserClick = function _newUserClick(next){
+firebaseHelper.updateUser = function _updateUser(next){
 	var clientsRef = firebase.database().ref('clients').orderByChild('-lastActivity');
 	clientsRef.on('child_added', function(data) {
 		next(data);

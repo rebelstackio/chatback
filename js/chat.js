@@ -17,6 +17,7 @@ Chat.SEND_MESSAGE_KEY = 13;
  */
 Chat.init = function _init(){
 	Chat.buildContactList();
+	Chat.createChatZoneMessage();
 }
 
 Chat.buildContactList = function _buildContactList(){
@@ -36,11 +37,30 @@ Chat.buildContactList = function _buildContactList(){
 	var row = document.createElement('div');
 	row.setAttribute('class', 'row chats-row');
 
+	//CREATE CONTACT LIST TITLE
+	var titleContainer = document.createElement('div');
+	titleContainer.setAttribute('class', 'col-md-12');
+	titleContainer.setAttribute('style', 'text-align: center;');
+	var h4 = document.createElement('h4');
+	h4.setAttribute('class', 'chat-title')
+	var text = document.createTextNode('Contact List');
+	h4.appendChild(text);
+	titleContainer.appendChild(h4);
+	row.appendChild(titleContainer);
+
+	//CREATE CONTACT-LIST CONTAINER
 	var col = document.createElement('div');
 	col.setAttribute('class', 'col-md-12');
 	col.setAttribute('id', 'users-col');
+
+	//CREATE SPINNER
+	var spinner = Chat.createSpinner('Loading users');
+	col.appendChild(spinner);
+
 	row.appendChild(col);
 	chatContainer.appendChild(row);
+
+	$( spinner ).fadeIn( "slow" );
 }
 
 
@@ -52,6 +72,12 @@ Chat.buildContactList = function _buildContactList(){
  */
 Chat.createUserComponent = function _createUserComponent (userObj,  userId) {
 	var col = document.getElementById('users-col');
+	//CHECKING IF THE SPINNER IS ACTIVE
+	var spinner = col.getElementsByClassName('wrap');
+	if ( spinner && spinner.length ){
+		col.innerHTML = "";
+	}
+
 	var previousClients = document.getElementsByClassName('list-group-item');
 	var previousClientsLength = previousClients.length;
 	var added = false;
@@ -68,6 +94,7 @@ Chat.createUserComponent = function _createUserComponent (userObj,  userId) {
 		var userLink = document.createElement('a');
 		userLink.setAttribute('href', '#');
 		userLink.setAttribute('class', 'list-group-item');
+		userLink.setAttribute('style', 'display:none;');
 		userLink.setAttribute('id', 'link' + userId);
 		userLink.setAttribute('data-id',	userId);
 		userLink.setAttribute('data-name',	userObj.name);
@@ -77,6 +104,17 @@ Chat.createUserComponent = function _createUserComponent (userObj,  userId) {
 		var text = document.createTextNode(userObj.email);
 		userLink.appendChild(text);
 		col.appendChild(userLink);
+
+		$(userLink).fadeIn('slow');
+	}
+
+	if ( added ) {
+		if ( Chat.FOCUS_ID !=  userId) {
+			var link = document.getElementById('link' + userId);
+			if ( link ){
+				link.className += ' highlight-contact-list';
+			}
+		}
 	}
 }
 
@@ -92,6 +130,11 @@ Chat.userClickEvent = function _userClickEvent(event){
 	Chat.FOCUS_ID = id;
 	Chat.FOCUS_NAME = domElement.getAttribute('data-name');
 	Chat.FOCUS_EMAIL = domElement.getAttribute('data-email');
+	//TODO REMOVE ACTIVE CLASS FROM CONTACT LIST
+	var link = document.getElementById('link' + id);
+	if ( link ){
+		link.classList.remove("highlight-contact-list");
+	}
 	firebaseHelper.newClientMessage(id, function(data){
 		//NEW MEESAGE BELONGS TO THE CURRENT CHAT
 		if ( id == Chat.FOCUS_ID ) {
@@ -112,10 +155,11 @@ Chat.userClickEvent = function _userClickEvent(event){
 			Chat.createMessageZoneByUserMessages();
 			Chat.buildPreviousConversation(data.val());
 		} else {
-			//TODO NO MESSAGES
+			Chat.createChatZoneMessage();
 		}
 	}).catch(function(error){
-		//TODO HANDLE ERROR WHEN THERE IS AN ERROR GETTING USER'S MESSAGES
+		Chat.createChatZoneMessage('There is a problem getting the messages', true);
+		console.log('Error getting the messages', error);
 	});
 }
 
@@ -186,11 +230,11 @@ Chat.buildMessageZone = function _buildMessageZone(){
 }
 
  /**
-  * _addNewUser - Add the new user to the list
+  * _updateUser - Add the new user to the list
   *
   * @param  {object} user User Object
   */
-Chat.addNewUser = function _addNewUser(user){
+Chat.updateUser = function _updateUser(user){
 	if ( user && user.val()){
 		Chat.createUserComponent(user.val(), user.key);
 		Chat.sortUsersByActivity();
@@ -264,7 +308,7 @@ Chat.sendServerMessage = function _sendServerMessage(message){
 			console.log('Message  has been sent to the client ');
 			//CHANGE MESSAGE ICON TO SENT
 			var icon = lastMessage.getElementsByClassName('fa-paper-plane')[0];
-			icon.setAttribute('class', 'fa fa-circle me');
+			icon.setAttribute('class', 'fa fa-circle you');
 			icon.setAttribute('title', 'Message sent');
 		}).catch(function(error){
 			console.log('There is an error sending the meesage', error);
@@ -390,14 +434,14 @@ Chat.buildClientMessage = function _buildClientMessage(message, createdAt, read,
 		messageDataTextContainer.setAttribute('class', 'message-data-name');
 
 		var icon = document.createElement('i');
-		icon.setAttribute('class', 'fa fa-envelope you faa-pulse animated');
+		icon.setAttribute('class', 'fa fa-envelope me faa-pulse animated');
 
 		var strongText = document.createElement('strong');
 
 		var messageDataText = document.createTextNode(' '+ Chat.FOCUS_NAME + ' - ');
 		strongText.appendChild(messageDataText);
 
-		var time = Chat.buildDateMessageFormat();
+		var time = Chat.buildDateMessageFormat(createdAt);
 
 		var messageTextContainer = document.createElement('div');
 		messageTextContainer.setAttribute('class', 'message me-message float-right');
@@ -417,7 +461,7 @@ Chat.buildClientMessage = function _buildClientMessage(message, createdAt, read,
 
 		//ADD TO DOM
 		var chatList = document.getElementById('chat-list');
-		//CHECK IF THE CONTAINER IS READY  
+		//CHECK IF THE CONTAINER IS READY
 		if ( chatList ){
 			chatList.appendChild(messageContainer);
 
@@ -455,6 +499,88 @@ Chat.buildDateMessageFormat = function _buildDateMessageFormat(createdAt){
 }
 
 /**
+ * _createSpinner - Create spinner component
+ *
+ * @param  {string} msg Message description
+ * @return {DOM}  			Spinner
+ */
+Chat.createSpinner = function _createSpinner(msg){
+	// <div class="wrap">
+	// 	<div class="loading">
+	// 		<div class="bounceball"></div>
+	// 		<div class="text">Retriving History</div>
+	// 	</div>
+	// </div>
+	var message = msg || 'Loading Content';
+
+	var wrap = document.createElement('div');
+	wrap.setAttribute('class', 'wrap');
+	wrap.setAttribute('style', 'display:none;margin-top:15px;');
+
+	var loading = document.createElement('div');
+	loading.setAttribute('class', 'loading');
+
+	var bounceball = document.createElement('div');
+	bounceball.setAttribute('class', 'bounceball');
+
+	var text = document.createElement('div');
+	text.setAttribute('class', 'text');
+
+	var _message = document.createTextNode(message);
+
+	text.appendChild(_message);
+	loading.appendChild(bounceball);
+	loading.appendChild(text);
+	wrap.appendChild(loading);
+
+	return wrap
+}
+
+
+/**
+ * _createChatZoneMessage - Create a message in the chat zone
+ *
+ * @param  {string}  message Message description
+ * @param  {boolean} error   Error flag
+ */
+Chat.createChatZoneMessage = function _createChatZoneMessage(message, error){
+// 	<div>
+//     <i class="fa fa-comments fa-5x" aria-hidden="true"></i>
+// 		 <h4>
+//     	Select a conversation
+//   	 </h4>
+// </div>
+	var _message = message || 'No messages'
+	var container = document.createElement('div');
+	container.setAttribute('class', 'chat-zone-msg-ctn');
+	container.setAttribute('style', 'display:none;');
+
+	var icon = document.createElement('i');
+	if ( error ) {
+		icon.setAttribute('class', 'fa fa-comments fa-5x');
+	} else {
+		icon.setAttribute('class', 'fa fa-comments fa-5x');
+	}
+	icon.setAttribute('aria-hidden', 'true');
+
+	var title = document.createElement('h4');
+	title.setAttribute('class', 'chat-title')
+
+	var msg = document.createTextNode(_message);
+
+	title.appendChild(msg);
+	container.appendChild(icon);
+	container.appendChild(title);
+
+	//ADD TO CHAT ZONE
+	var chat = document.getElementById('current-chat');
+	chat.appendChild(container);
+
+	//UGG JQUERY
+	$( container ).fadeIn( "slow" );
+}
+
+/**
  * _focusLastMessageChat - Focus the last message on the chat component
  *
  * @return {type}  description
@@ -467,7 +593,10 @@ Chat.focusLastMessageChat = function _focusLastMessageChat(msgContainer){
 }
 
 document.addEventListener("DOMContentLoaded", function(){
+	//INIT FIREBASE HELER
 	firebaseHelper.init();
+	//INIT CHAT
 	Chat.init();
-	firebaseHelper.newUserClick(Chat.addNewUser);
+	// HANDLE USERS (LIST, ADDED AND UPDATED)
+	firebaseHelper.updateUser(Chat.updateUser);
 });
